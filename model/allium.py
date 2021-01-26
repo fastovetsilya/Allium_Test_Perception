@@ -17,11 +17,9 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
     # Train a new model starting from ImageNet weights
     python3 allium.py train --dataset=/path/to/allium/dataset --weights=imagenet
 
-    # Apply color splash to an image
-    python3 allium.py splash --weights=/path/to/weights/file.h5 --image=<URL or path to file>
+    # Apply detections to an image
+    python3 allium.py detect --weights=/path/to/weights/file.h5 --image=<URL or path to file>
 
-    # Apply color splash to video using the last weights you trained
-    python3 allium.py splash --weights=last --video=<URL or path to file>
 """
 
 import os
@@ -38,6 +36,7 @@ ROOT_DIR = os.path.abspath("../../")
 sys.path.append(ROOT_DIR)  # To find local version of the library
 from mrcnn.config import Config
 from mrcnn import model as modellib, utils
+from mrcnn import visualize
 
 # Path to trained weights file
 COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
@@ -67,8 +66,9 @@ class AlliumConfig(Config):
     # Number of training steps per epoch
     STEPS_PER_EPOCH = 100
 
-    # Skip detections with < 90% confidence
-    DETECTION_MIN_CONFIDENCE = 0.9
+    # Skip detections with < threshold confidence
+    DETECTION_MIN_CONFIDENCE = 0.3
+    DETECTION_NMS_THRESHOLD = 0.5
     
     MAX_GT_INSTANCES = 200
     DETECTION_MAX_INSTANCES = 200
@@ -222,76 +222,30 @@ def train(model):
                 layers='all')
 
 
-def color_splash(image, mask):
-    """Apply color splash effect.
-    image: RGB image [height, width, 3]
-    mask: instance segmentation mask [height, width, instance count]
+def detect(model, image_path=None): 
+    class_names = ['BG', 'not_dividing', 'dividing']
+    # Read image
+    image = skimage.io.imread(args.image)
+    # Detect objects
+    r = model.detect([image], verbose=1)[0]
+    # Define colors
+    colors = []
+    for i in range(len(r['class_ids'])):
+        if r['class_ids'][i] == 1:
+            color = [0, 0, 0]
+        else:
+            color = [0, 0, 1]
+        colors.append(color)
+    # Save image with masks
+    canvas = visualize.display_instances(
+        image, r['rois'], r['masks'], r['class_ids'],
+        class_names, r['scores'], colors=colors)
+    # Save output
+    # file_name = "detected_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
+    # canvas.print_figure(file_name)
+    # skimage.io.imsave(file_name, canvas)
+    # print("Saved to ", file_name)
 
-    Returns result image.
-    """
-    # Make a grayscale copy of the image. The grayscale copy still
-    # has 3 RGB channels, though.
-    gray = skimage.color.gray2rgb(skimage.color.rgb2gray(image)) * 255
-    # Copy color pixels from the original color image where mask is set
-    if mask.shape[-1] > 0:
-        # We're treating all instances as one, so collapse the mask into one layer
-        mask = (np.sum(mask, -1, keepdims=True) >= 1)
-        splash = np.where(mask, image, gray).astype(np.uint8)
-    else:
-        splash = gray.astype(np.uint8)
-    return splash
-
-
-def detect_and_color_splash(model, image_path=None, video_path=None):
-    assert image_path or video_path
-
-    # Image or video?
-    if image_path:
-        # Run model detection and generate the color splash effect
-        print("Running on {}".format(args.image))
-        # Read image
-        image = skimage.io.imread(args.image)
-        # Detect objects
-        r = model.detect([image], verbose=1)[0]
-        # Color splash
-        splash = color_splash(image, r['masks'])
-        # Save output
-        file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
-        skimage.io.imsave(file_name, splash)
-    elif video_path:
-        import cv2
-        # Video capture
-        vcapture = cv2.VideoCapture(video_path)
-        width = int(vcapture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(vcapture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = vcapture.get(cv2.CAP_PROP_FPS)
-
-        # Define codec and create video writer
-        file_name = "splash_{:%Y%m%dT%H%M%S}.avi".format(datetime.datetime.now())
-        vwriter = cv2.VideoWriter(file_name,
-                                  cv2.VideoWriter_fourcc(*'MJPG'),
-                                  fps, (width, height))
-
-        count = 0
-        success = True
-        while success:
-            print("frame: ", count)
-            # Read next image
-            success, image = vcapture.read()
-            if success:
-                # OpenCV returns images as BGR, convert to RGB
-                image = image[..., ::-1]
-                # Detect objects
-                r = model.detect([image], verbose=0)[0]
-                # Color splash
-                splash = color_splash(image, r['masks'])
-                # RGB -> BGR to save image to video
-                splash = splash[..., ::-1]
-                # Add image to video writer
-                vwriter.write(splash)
-                count += 1
-        vwriter.release()
-    print("Saved to ", file_name)
 
 
 ############################################################
@@ -306,7 +260,7 @@ if __name__ == '__main__':
         description='Train Mask R-CNN to detect onion cells.')
     parser.add_argument("command",
                         metavar="<command>",
-                        help="'train' or 'splash'")
+                        help="'train' or 'detect'")
     parser.add_argument('--dataset', required=False,
                         metavar="/path/to/allium/dataset/",
                         help='Directory of the Allium dataset')
@@ -319,18 +273,12 @@ if __name__ == '__main__':
                         help='Logs and checkpoints directory (default=logs/)')
     parser.add_argument('--image', required=False,
                         metavar="path or URL to image",
-                        help='Image to apply the color splash effect on')
-    parser.add_argument('--video', required=False,
-                        metavar="path or URL to video",
-                        help='Video to apply the color splash effect on')
+                        help='Image to apply detections on')
     args = parser.parse_args()
 
     # Validate arguments
     if args.command == "train":
         assert args.dataset, "Argument --dataset is required for training"
-    elif args.command == "splash":
-        assert args.image or args.video,\
-               "Provide --image or --video to apply color splash"
 
     print("Weights: ", args.weights)
     print("Dataset: ", args.dataset)
@@ -385,9 +333,8 @@ if __name__ == '__main__':
     # Train or evaluate
     if args.command == "train":
         train(model)
-    elif args.command == "splash":
-        detect_and_color_splash(model, image_path=args.image,
-                                video_path=args.video)
+    elif args.command == "detect":
+        detect(model, image_path=args.image)
     else:
         print("'{}' is not recognized. "
-              "Use 'train' or 'splash'".format(args.command))
+              "Use 'train' or 'detect'".format(args.command))
