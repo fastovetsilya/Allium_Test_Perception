@@ -6,9 +6,15 @@ import json
 
 # Load json annotations
 path_to_annotations = '/media/saltair/Library/Allium_cepa_experiment/via_annotations/reviewed/ILYA_Nd_Control_1_1/Nd_Control_1_1_annotations.json'
+path_to_annotations2 = '/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/generated_annotations.json'
+
 with open(path_to_annotations, 'r') as f:
     annotations = f.read()
 annotations = json.loads(annotations)
+
+with open(path_to_annotations2, 'r') as f:
+    annotations2 = f.read()
+annotations2 = json.loads(annotations2)
 
 # Perform additional operations below to inspect annotations
 

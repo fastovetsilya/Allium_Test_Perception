@@ -22,6 +22,7 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 
 """
 
+import cv2
 import os
 import sys
 import json
@@ -223,29 +224,99 @@ def train(model):
 
 
 def detect(model, image_path=None): 
+    '''
+    Detect cells for specified piece and display the predictions 
+    '''
     class_names = ['BG', 'not_dividing', 'dividing']
     # Read image
-    image = skimage.io.imread(args.image)
+    image = skimage.io.imread(image_path)
     # Detect objects
     r = model.detect([image], verbose=1)[0]
     # Define colors
     colors = []
     for i in range(len(r['class_ids'])):
         if r['class_ids'][i] == 1:
-            color = [0, 0, 0]
+            color = [0, 0, 0] #Black color for not dividing cells
         else:
-            color = [0, 0, 1]
+            color = [0, 0, 1] #Blue color for dividing cells
         colors.append(color)
-    # Save image with masks
-    canvas = visualize.display_instances(
+    # Display image with masks
+    visualize.display_instances(
         image, r['rois'], r['masks'], r['class_ids'],
         class_names, r['scores'], colors=colors)
-    # Save output
-    # file_name = "detected_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
-    # canvas.print_figure(file_name)
-    # skimage.io.imsave(file_name, canvas)
-    # print("Saved to ", file_name)
 
+    
+def detect_and_annotate(model, dir_path=None):
+    '''
+    Perform the detection for the images in the specified folder, approximate 
+    predicted masks with polygons and compose annotations in VIA annotation
+    format. 
+    This is used to generate the predictions to make it easier to 
+    label the data. 
+    '''
+    
+    # List files in the directory
+    image_list = os.listdir(dir_path)
+    image_list.sort()
+    
+    annotations = {}
+    for image_name in image_list[0:2]:
+        # Load the image
+        image = skimage.io.imread(os.path.join(dir_path, image_name))
+        # Print the status
+        print("Annotating image {}".format(image_name))
+        # Detect objects
+        r = model.detect([image], verbose=1)[0]
+        class_ids = r['class_ids']
+        masks = r['masks']
+        
+        # Create regions from masks
+        regions = []
+        for mask_no in range(masks.shape[2]):
+            class_id = class_ids[mask_no]
+            mask = masks[:, :, mask_no]
+            mask = np.array(mask * 255, dtype=np.uint8)
+            mask = np.expand_dims(mask, 2)
+            # Approximate masks with polygons
+            contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            if contours != []: 
+                c = contours[0]
+                peri = cv2.arcLength(c, closed=True)
+                approx = cv2.approxPolyDP(c, epsilon=0.002 * peri, closed=True)
+                approx = approx.reshape(approx.shape[0], approx.shape[2])
+                # Create region part
+                region = {}
+                region['region_attributes'] = {}
+                region['shape_attributes'] = {}
+                region['shape_attributes']['name'] = 'polygon'
+                all_points_x = list(approx[:, 0])
+                all_points_y = list(approx[:, 1])
+                all_points_x = [int(x) for x in all_points_x]
+                all_points_y = [int(y) for y in all_points_y]
+                region['shape_attributes']['all_points_x'] = all_points_x
+                region['shape_attributes']['all_points_y'] = all_points_y
+                if class_id == 1:
+                    region['region_attributes']['cell_type'] = 'not_dividing'
+                else:
+                    region['region_attributes']['cell_type'] = 'dividing'
+                regions.append(region)
+            else: 
+                continue
+            
+        # Create annotation
+        ann = {}
+        ann['file_attributes'] = {}
+        ann['filename'] = image_name
+        ann['regions'] = regions
+        size = int(os.stat(os.path.join(dir_path, image_name)).st_size)
+        ann['size'] = size
+        # Add annotation to the annotation list
+        annotations[image_name + str(size)] = ann
+
+    # Save annotations to .json file 
+    annotations = json.dumps(annotations)
+    with open("generated_annotations.json", "w") as outfile:  
+        outfile.write(annotations)
 
 
 ############################################################
@@ -273,7 +344,10 @@ if __name__ == '__main__':
                         help='Logs and checkpoints directory (default=logs/)')
     parser.add_argument('--image', required=False,
                         metavar="path or URL to image",
-                        help='Image to apply detections on')
+                        help='Directory to annotate images in')
+    parser.add_argument('--directory', required=False,
+                    metavar="path or URL to image",
+                    help='Image to apply detections on')
     args = parser.parse_args()
 
     # Validate arguments
@@ -335,6 +409,8 @@ if __name__ == '__main__':
         train(model)
     elif args.command == "detect":
         detect(model, image_path=args.image)
+    elif args.command == "detect_and_annotate":
+        detect_and_annotate(model, dir_path=args.directory)
     else:
         print("'{}' is not recognized. "
               "Use 'train' or 'detect'".format(args.command))
