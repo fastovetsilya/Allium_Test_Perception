@@ -260,7 +260,7 @@ def detect_and_annotate(model, dir_path=None):
     image_list.sort()
     
     annotations = {}
-    for image_name in image_list[0:2]:
+    for image_name in image_list:
         # Load the image
         image = skimage.io.imread(os.path.join(dir_path, image_name))
         # Print the status
