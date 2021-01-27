@@ -22,7 +22,6 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 
 """
 
-import cv2
 import os
 import sys
 import json
@@ -254,6 +253,7 @@ def detect_and_annotate(model, dir_path=None):
     This is used to generate the predictions to make it easier to 
     label the data. 
     '''
+    import cv2
     
     # List files in the directory
     image_list = os.listdir(dir_path)
@@ -319,8 +319,172 @@ def detect_and_annotate(model, dir_path=None):
         outfile.write(annotations)
 
 
+def report(model, config, dir_path=None):
+    '''
+    Detect full size images using sliding window and generate report for the 
+    selected batch (directory)
+    '''
+    import cv2
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = 933120000 * 10**2 #Increase max image size
+    from math import ceil
+    
+    # Extract the configurations
+    overlap_factor = 0.3
+    window_size = [4000, 4000]
+    confidence = config.DETECTION_MIN_CONFIDENCE 
+    threshold = config.DETECTION_NMS_THRESHOLD 
+    overlap_factor = [overlap_factor, overlap_factor]
+    
+    # List files in the directory
+    image_list = os.listdir(dir_path)
+    image_list.sort()
+    
+    for image_name in image_list:
+        print("=" * 50)
+        print("Analysing image {}".format(image_name))
+        print("=" * 50)
+        
+        image = Image.open(os.path.join(dir_path, image_name))
+        width, height = image.size
+        image_size = [width, height]
+        
+        # Re-compute the optimal overlap factor (so that the window slides smoothly)
+        steps = [ceil((image_size[0] - window_size[0]) // (window_size[0] * (1 - overlap_factor[0]))), 
+                 ceil((image_size[1] - window_size[1]) // (window_size[1] * (1 - overlap_factor[1])))]  
+        
+        # Adjust steps
+        if steps[0] < 0:
+            steps[0] = 0
+            
+        if steps[1] < 0:
+            steps[1] = 0
+        
+        if steps[0] <= 1 and window_size[0] < image_size[0]:
+            steps[0] = 2
+        
+        if steps[1] <= 1 and window_size[1] < image_size[1]:
+            steps[1] = 2
+        
+        print('\n--- The prediction will be performed in ', (steps[0] + 1) * (steps[1] + 1), 
+              ' steps ---')    
+            
+        if steps[0] == 0:
+            overlap_factor_refined_0 = 0
+        else:
+            overlap_factor_refined_0 = 1 - ((image_size[0] - window_size[0]) / 
+                                            steps[0] / window_size[0])
+            
+        if steps[1] == 0:
+            overlap_factor_refined_1 = 0
+        else:
+            overlap_factor_refined_1 = 1 - ((image_size[1] - window_size[1]) / 
+                                            steps[1] / window_size[1]) 
+    
+        overlap_factor_refined = [overlap_factor_refined_0, 
+                                  overlap_factor_refined_1]
+        
+        print("\nRefined overlap factor(x,y) is {},{}".format(overlap_factor_refined_0, overlap_factor_refined_1))
+        
+        # Perform sliding window prediction
+        # Initialize collectors for all predictions 
+        all_steps = []
+        all_boxes = []
+        all_polygons = []
+        all_confidences = []
+        all_classIDs = []
+        
+        # Crop the image and perform sliding window predictions
+        print("\nPerforming sliding window prediction")
+        cropped_part_no = 0
+        for height_step in range(steps[1] + 1):
+            for width_step in range(steps[0] + 1):
+                print("\nAnalyzing part {}".format(cropped_part_no))
+                # Crop the image region
+                cropped_part_pos_x = int(width_step * (1-overlap_factor_refined[0]) * window_size[0])
+                cropped_part_pos_y = int(height_step * (1-overlap_factor_refined[1]) * window_size[1])
+                crop_box = (cropped_part_pos_x, cropped_part_pos_y, 
+                            cropped_part_pos_x + window_size[0], cropped_part_pos_y + window_size[1])
+                cropped_part = image.crop(crop_box)
+                # Perform predictions
+                cropped_part = np.array(cropped_part)
+                r = model.detect([cropped_part], verbose=0)[0]
+                boxes = r['rois']
+                confidences = r['scores']
+                confidences = [float(conf) for conf in confidences]
+                classIDs = r['class_ids']
+                classIDs = [int(cid) for cid in classIDs]
+                masks = r['masks']
+                # Transform the output of the model
+                boxes = [[int(box[1] + cropped_part_pos_x), int(box[0] + cropped_part_pos_y), 
+                          int(box[3] - box[1]), 
+                          int(box[2] - box[0])] for box in boxes]
+                # Create polygons from masks (to save memory)
+                polygons = []
+                for mask_no in range(masks.shape[2]):
+                    mask = masks[:, :, mask_no]
+                    mask = np.array(mask * 255, dtype=np.uint8)
+                    mask = np.expand_dims(mask, 2)
+                    # Approximate masks with polygons
+                    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    if contours != []: 
+                        c = contours[0]
+                        peri = cv2.arcLength(c, closed=True)
+                        approx = cv2.approxPolyDP(c, epsilon=0.002 * peri, closed=True)
+                        approx = np.array([[a[0][0] + cropped_part_pos_x, a[0][1] + cropped_part_pos_y] for a in approx])
+                        approx = approx.reshape(approx.shape[0], 1, approx.shape[1])
+                        polygons.append(approx)
+                    else: 
+                        polygons.append([])
+                
+                # Add to the list of all outputs
+                steps_lst = [[width_step, height_step] for i in range(len(classIDs))]
+                all_steps.extend(steps_lst)
+                all_boxes.extend(boxes)
+                all_polygons.extend(polygons)
+                all_confidences.extend(confidences)
+                all_classIDs.extend(classIDs)
+                
+                cropped_part_no += 1
+                
+        # Apply non-max suppression to the detected boxes
+        print("\nApplying Non-Max suppression")
+        all_idxs = cv2.dnn.NMSBoxes(all_boxes, all_confidences, confidence, threshold)
+        # Save the predictions
+        # predictions = {"boxes": all_boxes,
+        #                "polygons": all_polygons,
+        #                "confidences": all_confidences, 
+        #                "classIDs": all_classIDs,
+        #                "idxs": all_idxs}
+        
+        # Draw the predictions      
+        print("\nDrawing predictions")
+        image = np.array(image)
+        image = image[:,:,::-1].copy()
+        colors = [[0, 0, 0], [0, 0, 0], [255, 0, 0]]
+        if len(all_idxs) > 0:
+            for i in all_idxs.flatten():
+                # extract bounding box coordinates
+                x, y = all_boxes[i][0], all_boxes[i][1]
+                w, h = all_boxes[i][2], all_boxes[i][3]
+                
+                # draw the bounding box and label on the image
+                color = [int(c) for c in colors[all_classIDs[i]]]
+                try:
+                    # Draw bounding boxes
+                    cv2.rectangle(image, (x, y), (x + w, y + h), color, 10)
+                    # Draw polygons 
+                    cv2.polylines(image,[all_polygons[i]],True,color, 10)
+                    # Filling the polygons is too slow, to optimize
+                    # image_copy = image.copy()
+                    # cv2.fillPoly(image_copy, [all_polygons[i]], color)
+                    # image = cv2.addWeighted(image_copy, 0.3, image, 0.7, 0)
+                except:
+                    continue
+        cv2.imwrite('predictions.jpg', image)
+        
 ############################################################
-#  Training
+#  Main block
 ############################################################
 
 if __name__ == '__main__':
@@ -331,7 +495,7 @@ if __name__ == '__main__':
         description='Train Mask R-CNN to detect onion cells.')
     parser.add_argument("command",
                         metavar="<command>",
-                        help="'train' or 'detect'")
+                        help="'train', 'detect' or 'report'")
     parser.add_argument('--dataset', required=False,
                         metavar="/path/to/allium/dataset/",
                         help='Directory of the Allium dataset')
@@ -411,6 +575,8 @@ if __name__ == '__main__':
         detect(model, image_path=args.image)
     elif args.command == "detect_and_annotate":
         detect_and_annotate(model, dir_path=args.directory)
+    elif args.command == "report":
+        report(model, config=config, dir_path=args.directory)
     else:
         print("'{}' is not recognized. "
-              "Use 'train' or 'detect'".format(args.command))
+              "Use 'train', 'detect' or 'report'".format(args.command))

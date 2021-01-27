@@ -107,21 +107,9 @@ model.load_weights(weights_path, by_name=True)
 
 
 '''
-Perform the detection for the images in the specified folder, approximate 
-predicted masks with polygons and compose annotations in VIA annotation
-format. 
-This is used to generate the predictions to make it easier to 
-label the data. 
+Perform the manipulations here
 '''
-
-# List files in the directory
-dir_path = './data/test/'
-image_list = os.listdir(dir_path)
-image_list.sort()
-
-# List files in the directory
-image_list = os.listdir(dir_path)
-image_list.sort()
+dir_path = 'data/test/'
 
 
 
