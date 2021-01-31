@@ -1,3 +1,9 @@
 # train
 python allium.py train --dataset=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data --weights=coco
 
+# detect and annotate
+python allium.py detect_and_annotate --directory=./data/test/ --weights=last
+
+# generate report
+python allium.py report --directory=./data/test/ --weights=last
+

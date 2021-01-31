@@ -464,13 +464,13 @@ def report(model, config, dir_path=None):
         print("\nDrawing predictions")
         image = np.array(image)
         image = image[:,:,::-1].copy()
+        image_polygon_canvas = image.copy()
         colors = [[0, 0, 0], [0, 0, 0], [255, 0, 0]]
         if len(all_idxs) > 0:
             for i in all_idxs.flatten():
                 # extract bounding box coordinates
                 x, y = all_boxes[i][0], all_boxes[i][1]
                 w, h = all_boxes[i][2], all_boxes[i][3]
-                
                 # draw the bounding box and label on the image
                 color = [int(c) for c in colors[all_classIDs[i]]]
                 try:
@@ -478,12 +478,11 @@ def report(model, config, dir_path=None):
                     cv2.rectangle(image, (x, y), (x + w, y + h), color, 10)
                     # Draw polygons 
                     cv2.polylines(image,[all_polygons[i]],True,color, 10)
-                    # Filling the polygons is too slow, to optimize
-                    # image_copy = image.copy()
-                    # cv2.fillPoly(image_copy, [all_polygons[i]], color)
-                    # image = cv2.addWeighted(image_copy, 0.3, image, 0.7, 0)
+                    # Filling the polygons
+                    cv2.fillPoly(image_polygon_canvas, [all_polygons[i]], color)
                 except:
                     continue
+        image = cv2.addWeighted(image_polygon_canvas, 0.3, image, 0.7, 0)
         cv2.imwrite('predictions.jpg', image)
         
 ############################################################
