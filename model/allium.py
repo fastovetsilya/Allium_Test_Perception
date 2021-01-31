@@ -75,6 +75,9 @@ class AlliumConfig(Config):
     
     IMAGE_MIN_DIM = 1024
     IMAGE_MAX_DIM = 1152
+    
+    USE_MINI_MASK = False
+    # MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
 
 ############################################################
 #  Dataset

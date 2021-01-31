@@ -1,0 +1,3 @@
+# train
+python allium.py train --dataset=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data --weights=coco
+
