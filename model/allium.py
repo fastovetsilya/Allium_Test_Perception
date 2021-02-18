@@ -19,18 +19,21 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 
     # Apply detections to an image
     python3 allium.py detect --weights=/path/to/weights/file.h5 --image=<URL or path to file>
-
 """
 
 import os
 import sys
 import json
+import glob
+import shutil
 import datetime
 import numpy as np
 import skimage.draw
+from sklearn.model_selection import KFold
 
 # Root directory of the project
-ROOT_DIR = os.path.abspath("../../")
+# ROOT_DIR = os.path.abspath("../../")
+ROOT_DIR = os.getcwd()
 
 # Import Mask RCNN
 sys.path.append(ROOT_DIR)  # To find local version of the library
@@ -190,6 +193,97 @@ class AlliumDataset(utils.Dataset):
             super(self.__class__, self).image_reference(image_id)
 
 
+def prepare_crossval_splits(images_path="data/images/", annotations_path="data/annotations", 
+                            random_state=None, n_splits=10, split_no=0):
+    """
+    TODO: write description here and with comments in the arguments
+    Parameters
+    ----------
+    images_path : TYPE
+        DESCRIPTION.
+    annotations_path : TYPE
+        DESCRIPTION.
+    random_state : TYPE, optional
+        DESCRIPTION. The default is None.
+    n_splits : TYPE, optional
+        DESCRIPTION. The default is 10.
+    split_no : TYPE, optional
+        DESCRIPTION. The default is 0.
+
+    Returns
+    -------
+    None.
+
+    """
+    
+    # Define paths to images and annotations
+    images_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(images_path) for f in filenames]
+    annotations_list = os.listdir(annotations_path)
+    
+    # Load annotations
+    annotations = {}
+    for annotation_file in annotations_list:
+        annotation = json.load(open(os.path.join(annotations_path, annotation_file)))
+        annotations.update(annotation)
+
+    # Create train and val directories
+    try:
+        train_path = os.path.join(images_path.split("/")[0], "train")
+        val_path = os.path.join(images_path.split("/")[0], "val")
+        shutil.rmtree(train_path)
+        os.mkdir(train_path)
+        shutil.rmtree(val_path)
+        os.mkdir(val_path)
+    except:
+        os.mkdir(train_path)
+        os.mkdir(val_path)
+    
+    # Create train and validation splits
+    if not n_splits:
+        images_list_train = images_list
+        images_list_val = images_list
+    else:
+        kf = KFold(n_splits=n_splits, random_state=random_state)
+        kf.get_n_splits(images_list)
+        kf_count = 0
+        for train_index, val_index in kf.split(images_list):
+            if kf_count == split_no:
+                print("TRAIN:", train_index, "VAL:", val_index)
+                images_list_train, images_list_val = np.array(images_list)[train_index].tolist(), np.array(images_list)[val_index].tolist()
+                break
+            kf_count += 1
+        
+    # Create annotations for train and validation splits
+    # Save annotations and copy images to the directories
+    annotations_train = {}
+    annotations_val = {}
+    # Train
+    for image_path in images_list_train:
+        image_name = image_path.split("/")[-1]
+        for key in annotations.keys():
+            if image_name == key.split(".")[0] + "." + key.split(".")[1][:3]:
+                annotations_train[image_name + key.split(".")[1][3:]] = annotations[key]
+                # Copy image to the train directory
+                shutil.copyfile(image_path, os.path.join(train_path, image_name))       
+    annotations_train = json.dumps(annotations_train)
+    with open(os.path.join(train_path, "via_region_data.json"), "w") as ann_file:
+        ann_file.write(annotations_train)
+                
+    # Validation
+    for image_path in images_list_val:
+        image_name = image_path.split("/")[-1]
+        for key in annotations.keys():
+            if image_name == key.split(".")[0] + "." + key.split(".")[1][:3]:
+                annotations_val[image_name + key.split(".")[1][3:]] = annotations[key]
+                # Copy image to the train directory
+                shutil.copyfile(image_path, os.path.join(val_path, image_name))        
+    annotations_val = json.dumps(annotations_val)
+    with open(os.path.join(val_path, "via_region_data.json"), "w") as ann_file:
+        ann_file.write(annotations_val)
+
+    print("Done.")
+       
+
 def train(model):
     """Train the model."""
     # Training dataset.
@@ -226,9 +320,9 @@ def train(model):
 
 
 def detect(model, image_path=None): 
-    '''
+    """
     Detect cells for specified piece and display the predictions 
-    '''
+    """
     class_names = ['BG', 'not_dividing', 'dividing']
     # Read image
     image = skimage.io.imread(image_path)
@@ -249,13 +343,13 @@ def detect(model, image_path=None):
 
     
 def detect_and_annotate(model, dir_path=None):
-    '''
+    """
     Perform the detection for the images in the specified folder, approximate 
     predicted masks with polygons and compose annotations in VIA annotation
     format. 
     This is used to generate the predictions to make it easier to 
     label the data. 
-    '''
+    """
     import cv2
     
     # List files in the directory
@@ -323,10 +417,10 @@ def detect_and_annotate(model, dir_path=None):
 
 
 def report(model, config, dir_path=None):
-    '''
+    """
     Detect full size images using sliding window and generate report for the 
     selected batch (directory)
-    '''
+    """
     import cv2
     from PIL import Image
     Image.MAX_IMAGE_PIXELS = 933120000 * 10**2 #Increase max image size
@@ -369,8 +463,8 @@ def report(model, config, dir_path=None):
         if steps[1] <= 1 and window_size[1] < image_size[1]:
             steps[1] = 2
         
-        print('\n--- The prediction will be performed in ', (steps[0] + 1) * (steps[1] + 1), 
-              ' steps ---')    
+        print("\n--- The prediction will be performed in ", (steps[0] + 1) * (steps[1] + 1), 
+              " steps ---")    
             
         if steps[0] == 0:
             overlap_factor_refined_0 = 0
@@ -485,6 +579,14 @@ def report(model, config, dir_path=None):
         image = cv2.addWeighted(image_polygon_canvas, 0.3, image, 0.7, 0)
         cv2.imwrite('predictions.jpg', image)
         
+        
+def validate(model, dir_path=None):
+    """
+    Validates the model on the dataset in the provided directory, and 
+    computes validation metric (mAP).
+    """
+    pass
+
 ############################################################
 #  Main block
 ############################################################
@@ -501,7 +603,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', required=False,
                         metavar="/path/to/allium/dataset/",
                         help='Directory of the Allium dataset')
-    parser.add_argument('--weights', required=True,
+    parser.add_argument('--weights', required=False,
                         metavar="/path/to/weights.h5",
                         help="Path to weights .h5 file or 'coco'")
     parser.add_argument('--logs', required=False,
@@ -514,6 +616,7 @@ if __name__ == '__main__':
     parser.add_argument('--directory', required=False,
                     metavar="path or URL to image",
                     help='Image to apply detections on')
+
     args = parser.parse_args()
 
     # Validate arguments
