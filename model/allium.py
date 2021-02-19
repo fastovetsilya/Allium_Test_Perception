@@ -300,17 +300,18 @@ def train(model):
     # Data augmentations
     augmentation = imgaug.augmenters.Sometimes(0.5, [
                     imgaug.augmenters.Fliplr(0.5),
-                    imgaug.augmenters.Flipud(0.5),
-                    imgaug.augmenters.Rotate((-45, 45)),
-                    imgaug.augmenters.Rot90((1, 3)),
-                    imgaug.augmenters.ChangeColorTemperature((1100, 10000)), 
-                    imgaug.augmenters.MultiplyBrightness((0.5, 1.5)), 
-                    imgaug.augmenters.MultiplyHueAndSaturation(mul_hue=(0.5, 1.5)), 
-                    imgaug.augmenters.GammaContrast((0.5, 2.0), per_channel=True)
+                    imgaug.augmenters.Flipud(0.5), 
+                    imgaug.augmenters.Multiply((0.5, 1.5))
+                    #imgaug.augmenters.Rotate((-45, 45)),
+                    #imgaug.augmenters.Rot90((1, 3))
+                    #imgaug.augmenters.MultiplyBrightness((0.5, 1.5))
+                    #imgaug.augmenters.ChangeColorTemperature((1100, 10000)), 
+                    #imgaug.augmenters.MultiplyHueAndSaturation(mul_hue=(0.5, 1.5)), 
+                    #imgaug.augmenters.GammaContrast((0.5, 2.0), per_channel=True),
                 ])
 
-    # Training - Stage 1
-    # Pretraing heads
+    # # Training - Stage 1
+    # # Pretraing heads
     print("\nTraining network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,

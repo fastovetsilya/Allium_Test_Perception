@@ -1250,14 +1250,14 @@ def load_image_gt(dataset, config, image_id, augment=False, augmentation=None,
         det = augmentation.to_deterministic()
         image = det.augment_image(image)
         # Change mask to np.uint8 because imgaug doesn't support np.bool
-        # mask = det.augment_image(mask.astype(np.uint8),
+        mask = det.augment_image(mask.astype(np.uint8),
+                                  hooks=imgaug.HooksImages(activator=hook)) # Use imgaug 0.2.6
+        # if mask_shape[-1] == 1 or mask_shape[-1] == 3:
+        #     mask = det.augment_image(mask.astype(np.uint8),
+        #                          hooks=imgaug.HooksImages(activator=hook)) 
+        # else:
+        #     mask = det.augment_images(mask.astype(np.uint8),
         #                          hooks=imgaug.HooksImages(activator=hook))
-        if mask_shape[-1] == 1 or mask_shape[-1] == 3:
-            mask = det.augment_image(mask.astype(np.uint8),
-                                 hooks=imgaug.HooksImages(activator=hook)) 
-        else:
-            mask = det.augment_images(mask.astype(np.uint8),
-                                 hooks=imgaug.HooksImages(activator=hook))
 
         # Verify that shapes didn't change
         assert image.shape == image_shape, "Augmentation shouldn't change image size"
@@ -2162,9 +2162,17 @@ class MaskRCNN():
         metrics. Then calls the Keras compile() function.
         """
         # Optimizer object
-        optimizer = keras.optimizers.SGD(
-            lr=learning_rate, momentum=momentum,
-            clipnorm=self.config.GRADIENT_CLIP_NORM)
+        # optimizer = keras.optimizers.SGD(
+        #     lr=learning_rate, momentum=momentum,
+        #     clipnorm=self.config.GRADIENT_CLIP_NORM)
+        optimizer = keras.optimizers.Nadam(learning_rate=learning_rate, 
+                                            clipnorm=self.config.GRADIENT_CLIP_NORM)
+        print("\n")
+        print("=" * 50)
+        print("USING NADAM OPTIMIZER")
+        print("=" * 50)
+        print("\n")
+        
         # Add Losses
         # First, clear previously set losses to avoid duplication
         self.keras_model.metrics_tensors = []
