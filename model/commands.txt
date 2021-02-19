@@ -1,6 +1,9 @@
 # train
 python allium.py train --dataset=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data --weights=coco
 
+# detect
+python allium.py detect --weights=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/logs/allium20210218T2144/mask_rcnn_allium_0085.h5 --image=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data/val/Nd_Control_1_1__0-3.png
+
 # detect and annotate
 python allium.py detect_and_annotate --directory=./data/test/ --weights=last
 

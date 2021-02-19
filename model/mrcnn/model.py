@@ -2162,16 +2162,25 @@ class MaskRCNN():
         metrics. Then calls the Keras compile() function.
         """
         # Optimizer object
-        # optimizer = keras.optimizers.SGD(
-        #     lr=learning_rate, momentum=momentum,
-        #     clipnorm=self.config.GRADIENT_CLIP_NORM)
-        optimizer = keras.optimizers.Nadam(learning_rate=learning_rate, 
-                                            clipnorm=self.config.GRADIENT_CLIP_NORM)
-        print("\n")
-        print("=" * 50)
-        print("USING NADAM OPTIMIZER")
-        print("=" * 50)
-        print("\n")
+        optimizer = keras.optimizers.SGD(
+            lr=learning_rate, momentum=momentum,
+            clipnorm=self.config.GRADIENT_CLIP_NORM)
+        
+        # optimizer = keras.optimizers.Adam(
+        #         learning_rate, amsgrad=True, clipnorm=self.config.GRADIENT_CLIP_NORM)
+        # print("\n")
+        # print("=" * 50)
+        # print("USING ADAM OPTIMIZER")
+        # print("=" * 50)
+        # print("\n")
+        
+        # optimizer = keras.optimizers.Nadam(learning_rate=learning_rate, 
+        #                                     clipnorm=self.config.GRADIENT_CLIP_NORM)
+        # print("\n")
+        # print("=" * 50)
+        # print("USING NADAM OPTIMIZER")
+        # print("=" * 50)
+        # print("\n")
         
         # Add Losses
         # First, clear previously set losses to avoid duplication
