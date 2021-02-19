@@ -597,11 +597,48 @@ def report(model, config, dir_path=None):
         cv2.imwrite('predictions.jpg', image)
         
         
-def validate(model, dir_path=None):
+def compute_batch_ap(dataset, image_ids, verbose=1):
     """
     Validates the model on the dataset in the provided directory, and 
     computes validation metric (mAP).
     """
+    # Validation dataset
+    dataset_val = AlliumDataset()
+    dataset_val.load_allium(args.dataset, "val")
+    dataset_val.prepare()
+    print("Images: {}\nClasses: {}".format(len(dataset.image_ids), dataset.class_names))
+    
+    APs = []
+    for image_id in image_ids:
+        # Load image
+        image, image_meta, gt_class_id, gt_bbox, gt_mask =\
+            modellib.load_image_gt(dataset, config,
+                                   image_id, use_mini_mask=False)
+        # Run object detection
+        results = model.detect_molded(image[np.newaxis], image_meta[np.newaxis], verbose=0)
+        # Compute AP over range 0.5 to 0.95
+        r = results[0]
+        ap = utils.compute_ap_range(
+            gt_bbox, gt_class_id, gt_mask,
+            r['rois'], r['class_ids'], r['scores'], r['masks'],
+            verbose=0)
+        APs.append(ap)
+        if verbose:
+            info = dataset.image_info[image_id]
+            meta = modellib.parse_image_meta(image_meta[np.newaxis,...])
+            print("{:3} {}   AP: {:.2f}".format(
+                meta["image_id"][0], meta["original_image_shape"][0], ap))
+    
+    # Print the results
+    print(APs)
+    print(np.mean(APs))
+          
+    return APs
+
+
+       
+def validate(model, dir_path=None):
+
     pass
 
 ############################################################
@@ -694,6 +731,8 @@ if __name__ == '__main__':
     if args.command == "train":
         train(model)
     elif args.command == "detect":
+        detect(model, image_path=args.image)
+    elif args.command == "validate":
         detect(model, image_path=args.image)
     elif args.command == "detect_and_annotate":
         detect_and_annotate(model, dir_path=args.directory)
