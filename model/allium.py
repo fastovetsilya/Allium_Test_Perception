@@ -26,6 +26,7 @@ import sys
 import json
 import glob
 import shutil
+import imgaug
 import datetime
 import numpy as np
 import skimage.draw
@@ -67,7 +68,7 @@ class AlliumConfig(Config):
     NUM_CLASSES = 1 + 2  # Background + not_dividing + dividing
 
     # Number of training steps per epoch
-    STEPS_PER_EPOCH = 100
+    STEPS_PER_EPOCH = 200
 
     # Skip detections with < threshold confidence
     DETECTION_MIN_CONFIDENCE = 0.3
@@ -295,6 +296,18 @@ def train(model):
     dataset_val = AlliumDataset()
     dataset_val.load_allium(args.dataset, "val")
     dataset_val.prepare()
+    
+    # Data augmentations
+    augmentation = imgaug.augmenters.Sometimes(0.5, [
+                    imgaug.augmenters.Fliplr(0.5),
+                    imgaug.augmenters.Flipud(0.5),
+                    imgaug.augmenters.Rotate((-45, 45)),
+                    imgaug.augmenters.Rot90((1, 3)),
+                    imgaug.augmenters.ChangeColorTemperature((1100, 10000)), 
+                    imgaug.augmenters.MultiplyBrightness((0.5, 1.5)), 
+                    imgaug.augmenters.MultiplyHueAndSaturation(mul_hue=(0.5, 1.5)), 
+                    imgaug.augmenters.GammaContrast((0.5, 2.0), per_channel=True)
+                ])
 
     # Training - Stage 1
     # Pretraing heads
@@ -302,6 +315,7 @@ def train(model):
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
                 epochs=15,
+                augmentation = augmentation,
                 layers='heads')
     # Training - Stage 2
     # Finetune layers from ResNet stage 4 and up
@@ -309,13 +323,15 @@ def train(model):
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE / 10,
                 epochs=20,
+                augmentation = augmentation,
                 layers='4+')
     # Training - Stage 3
     # Finetune layers from ResNet stage 3 and up
     print("Training Resnet layer 3+")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE / 100,
-                epochs=50,
+                augmentation = augmentation,
+                epochs=100,
                 layers='all')
 
 
