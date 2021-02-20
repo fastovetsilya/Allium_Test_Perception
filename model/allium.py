@@ -68,7 +68,7 @@ class AlliumConfig(Config):
     NUM_CLASSES = 1 + 2  # Background + not_dividing + dividing
 
     # Number of training steps per epoch
-    STEPS_PER_EPOCH = 200
+    STEPS_PER_EPOCH = 100
 
     # Skip detections with < threshold confidence
     DETECTION_MIN_CONFIDENCE = 0.3
@@ -94,9 +94,6 @@ class AlliumDataset(utils.Dataset):
         dataset_dir: Root directory of the dataset.
         subset: Subset to load: train or val
         """
-        print("==" * 10)
-        print("Loading dataset")
-        print("==" * 10)
         
         # Add classes. Not dividing and dividing
         self.add_class("allium", 1, "not_dividing")
@@ -105,6 +102,11 @@ class AlliumDataset(utils.Dataset):
         # Train or validation dataset?
         assert subset in ["train", "val"]
         dataset_dir = os.path.join(dataset_dir, subset)
+        
+        # Print status
+        print("==" * 30)
+        print("Loading dataset: {}".format(subset))
+        print("==" * 30)
 
         # Load annotations        
         annotations = json.load(open(os.path.join(dataset_dir, "via_region_data.json")))
@@ -139,9 +141,10 @@ class AlliumDataset(utils.Dataset):
                 width=width, height=height,
                 polygons=polygons)
             
-        print("==" * 10)
+        # Print status
+        print("==" * 30)
         print("Finished loading dataset")
-        print("==" * 10)
+        print("==" * 30)
 
     def load_mask(self, image_id):
         """Generate instance masks for an image.
@@ -282,7 +285,7 @@ def prepare_crossval_splits(images_path="data/images/", annotations_path="data/a
     with open(os.path.join(val_path, "via_region_data.json"), "w") as ann_file:
         ann_file.write(annotations_val)
 
-    print("Done.")
+    print("Dataset prepared.")
        
 
 def train(model):
@@ -315,7 +318,7 @@ def train(model):
     print("\nTraining network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=15,
+                epochs=1,
                 augmentation = augmentation,
                 layers='heads')
     # Training - Stage 2
@@ -335,6 +338,62 @@ def train(model):
                 epochs=100,
                 layers='all')
 
+def train_cv(model_dir, model_weights, model_config, k_fold):
+    """
+    //Write docstrings here//
+    """
+    # Initialize CV directory
+    cv_dir = os.path.join(model_dir, "CV")
+    # Clean CV directory
+    try:
+        shutil.rmtree(cv_dir)
+        os.mkdir(cv_dir)
+    except:
+        os.mkdir(cv_dir)
+        
+    # Train model for each K
+    for k in range(k_fold):
+        k_logs_dir = os.path.join(cv_dir, str(k))
+        os.mkdir(k_logs_dir)
+    
+        # Load the model
+        model = modellib.MaskRCNN(mode="training", config=model_config,
+                              model_dir=k_logs_dir)
+        
+        # Load model weights
+        if model_weights.lower() == "coco":
+            weights_path = COCO_WEIGHTS_PATH
+            # Download weights file
+            if not os.path.exists(weights_path):
+                utils.download_trained_weights(weights_path)
+        elif model_weights.lower() == "last":
+            # Find last trained weights
+            weights_path = model.find_last()
+        elif model_weights.lower() == "imagenet":
+            # Start from ImageNet trained weights
+            weights_path = model.get_imagenet_weights()
+        else:
+            weights_path = model_weights
+            
+        print("Loading weights ", weights_path)
+        if model_weights.lower() == "coco":
+            # Exclude the last layers because they require a matching
+            # number of classes
+            model.load_weights(weights_path, by_name=True, exclude=[
+                "mrcnn_class_logits", "mrcnn_bbox_fc",
+                "mrcnn_bbox", "mrcnn_mask"])
+        else:
+            model.load_weights(weights_path, by_name=True)
+        
+        # Create K's split
+        print("Preparing new cross-validation split, k={}".format(k))
+        prepare_crossval_splits(images_path="data/images/", annotations_path="data/annotations", 
+                            random_state=123, n_splits=k_fold, split_no=k)
+        
+        # Train the model
+        print("Training model for k={}".format(k))
+        train(model)
+    
 
 def detect(model, image_path=None): 
     """
@@ -597,22 +656,27 @@ def report(model, config, dir_path=None):
         cv2.imwrite('predictions.jpg', image)
         
         
-def compute_batch_ap(dataset, image_ids, verbose=1):
+def compute_batch_ap(model, dataset, limit, verbose=1):
     """
     Validates the model on the dataset in the provided directory, and 
     computes validation metric (mAP).
     """
     # Validation dataset
     dataset_val = AlliumDataset()
-    dataset_val.load_allium(args.dataset, "val")
+    dataset_val.load_allium(dataset, "val")
     dataset_val.prepare()
-    print("Images: {}\nClasses: {}".format(len(dataset.image_ids), dataset.class_names))
+    if limit:
+        image_ids = dataset_val.image_ids[:limit]
+    else: 
+        image_ids = dataset_val.image_ids
+    print("Images: {}\nClasses: {}".format(len(dataset_val.image_ids), dataset_val.class_names))
     
+    # Compute mAP
     APs = []
     for image_id in image_ids:
         # Load image
         image, image_meta, gt_class_id, gt_bbox, gt_mask =\
-            modellib.load_image_gt(dataset, config,
+            modellib.load_image_gt(dataset_val, config,
                                    image_id, use_mini_mask=False)
         # Run object detection
         results = model.detect_molded(image[np.newaxis], image_meta[np.newaxis], verbose=0)
@@ -624,22 +688,19 @@ def compute_batch_ap(dataset, image_ids, verbose=1):
             verbose=0)
         APs.append(ap)
         if verbose:
-            info = dataset.image_info[image_id]
+            # info = dataset.image_info[image_id]
             meta = modellib.parse_image_meta(image_meta[np.newaxis,...])
             print("{:3} {}   AP: {:.2f}".format(
                 meta["image_id"][0], meta["original_image_shape"][0], ap))
     
     # Print the results
-    print(APs)
-    print(np.mean(APs))
+    mAP = np.mean(APs)
+    print("Average precisions are: {}".format(APs))
+    print("Mean average precision is: {}".format(mAP))
           
-    return APs
+    return mAP
 
 
-       
-def validate(model, dir_path=None):
-
-    pass
 
 ############################################################
 #  Main block
@@ -668,8 +729,12 @@ if __name__ == '__main__':
                         metavar="path or URL to image",
                         help='Directory to annotate images in')
     parser.add_argument('--directory', required=False,
-                    metavar="path or URL to image",
-                    help='Image to apply detections on')
+                        metavar="",
+                        help='Image to apply detections on')
+    parser.add_argument('--k_fold', required=False,
+                        default=5,
+                        metavar="",
+                        help='K number for K-fold cross-validation')
 
     args = parser.parse_args()
 
@@ -682,7 +747,7 @@ if __name__ == '__main__':
     print("Logs: ", args.logs)
 
     # Configurations
-    if args.command == "train":
+    if args.command == "train" or args.command == "train_cv":
         config = AlliumConfig()
     else:
         class InferenceConfig(AlliumConfig):
@@ -697,43 +762,54 @@ if __name__ == '__main__':
     if args.command == "train":
         model = modellib.MaskRCNN(mode="training", config=config,
                                   model_dir=args.logs)
+    elif args.command == "train_cv":
+        pass
     else:
         model = modellib.MaskRCNN(mode="inference", config=config,
                                   model_dir=args.logs)
 
     # Select weights file to load
-    if args.weights.lower() == "coco":
-        weights_path = COCO_WEIGHTS_PATH
-        # Download weights file
-        if not os.path.exists(weights_path):
-            utils.download_trained_weights(weights_path)
-    elif args.weights.lower() == "last":
-        # Find last trained weights
-        weights_path = model.find_last()
-    elif args.weights.lower() == "imagenet":
-        # Start from ImageNet trained weights
-        weights_path = model.get_imagenet_weights()
-    else:
-        weights_path = args.weights
+    if args.command != "train_cv":
+        if args.weights.lower() == "coco":
+            weights_path = COCO_WEIGHTS_PATH
+            # Download weights file
+            if not os.path.exists(weights_path):
+                utils.download_trained_weights(weights_path)
+        elif args.weights.lower() == "last":
+            # Find last trained weights
+            weights_path = model.find_last()
+        elif args.weights.lower() == "imagenet":
+            # Start from ImageNet trained weights
+            weights_path = model.get_imagenet_weights()
+        else:
+            weights_path = args.weights
+    else: 
+        pass
 
     # Load weights
-    print("Loading weights ", weights_path)
-    if args.weights.lower() == "coco":
-        # Exclude the last layers because they require a matching
-        # number of classes
-        model.load_weights(weights_path, by_name=True, exclude=[
-            "mrcnn_class_logits", "mrcnn_bbox_fc",
-            "mrcnn_bbox", "mrcnn_mask"])
+    if args.command != "train_cv":
+        print("Loading weights ", weights_path)
+        if args.weights.lower() == "coco":
+            # Exclude the last layers because they require a matching
+            # number of classes
+            model.load_weights(weights_path, by_name=True, exclude=[
+                "mrcnn_class_logits", "mrcnn_bbox_fc",
+                "mrcnn_bbox", "mrcnn_mask"])
+        else:
+            model.load_weights(weights_path, by_name=True)
     else:
-        model.load_weights(weights_path, by_name=True)
+        pass
 
     # Train or evaluate
     if args.command == "train":
         train(model)
+    elif args.command == "train_cv":
+        train_cv(model_dir=args.logs, model_weights=args.weights, 
+                 model_config=config, k_fold=args.k_fold)
     elif args.command == "detect":
         detect(model, image_path=args.image)
     elif args.command == "validate":
-        detect(model, image_path=args.image)
+        compute_batch_ap(model, dataset=args.dataset, limit=None)
     elif args.command == "detect_and_annotate":
         detect_and_annotate(model, dir_path=args.directory)
     elif args.command == "report":

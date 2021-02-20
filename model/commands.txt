@@ -6,6 +6,12 @@ python allium.py detect --weights=last --image=/media/saltair/Library/Allium_cep
 
 python allium.py detect --weights=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/logs/allium20210218T2144/mask_rcnn_allium_0085.h5 --image=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data/val/Nd_Control_1_1__0-3.png
 
+# Validate
+python allium.py validate --weights=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/logs/allium20210218T2144/mask_rcnn_allium_0085.h5 --dataset=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data
+
+# Train models for cross-validation
+python allium.py train_cv --weights=coco --dataset=/data/
+
 # detect and annotate
 python allium.py detect_and_annotate --directory=/home/saltair/Desktop/Nd_Control_1_3 --weights=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/logs/allium20210218T2144/mask_rcnn_allium_0085.h5
 
