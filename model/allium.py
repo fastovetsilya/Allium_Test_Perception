@@ -318,7 +318,7 @@ def train(model):
     print("\nTraining network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=1,
+                epochs=15,
                 augmentation = augmentation,
                 layers='heads')
     # Training - Stage 2
