@@ -488,7 +488,7 @@ def compute_cv_results(cv_dir, model_config, n_splits=5, random_state=123):
            model.load_weights(model_path, by_name=True)
            
            # Run the prediction
-           mAP = int(compute_batch_ap(model, model_config=model_config, 
+           mAP = float(compute_batch_ap(model, model_config=model_config, 
                                       dataset="data/", limit=None, verbose=1))
     
            # Append the result to the dictionary
