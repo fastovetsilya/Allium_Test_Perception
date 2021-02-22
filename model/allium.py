@@ -30,6 +30,7 @@ import imgaug
 import datetime
 import numpy as np
 import skimage.draw
+import pandas as pd
 from sklearn.model_selection import KFold
 
 # Root directory of the project
@@ -445,12 +446,13 @@ def train_cv(model_dir, model_weights, model_config, k_fold):
         backend.clear_session()
         
 
-def compute_cv_results(cv_dir, model_config, n_splits=5, random_state=123):
+def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=123):
     """
     //Add docstrings here//
     """
     import keras.backend as backend
     cv_results = {}
+    cv_result_id = 0
     
     # Compute K for k-fold CV
     K = os.listdir(cv_dir)
@@ -474,38 +476,49 @@ def compute_cv_results(cv_dir, model_config, n_splits=5, random_state=123):
         k_dir = os.path.join(cv_dir, str(k))
         k_model_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(k_dir) for f in filenames]
         k_model_list = [k_model for k_model in k_model_list if k_model.split(".")[-1] == "h5"]
+        k_model_list.sort()
         
         # Prepare validation split
         prepare_crossval_splits(images_path="data/images/", annotations_path="data/annotations", 
                             random_state=random_state, n_splits=n_splits, split_no=k)
         
-        for model_path in k_model_list:
-           n_model = int(model_path.split("/")[-1].split(".")[0].split("_")[-1])
+        # TODO: implement lag
+        lag_counter = 0
+        for count, model_path in enumerate(k_model_list):
+            n_model = int(model_path.split("/")[-1].split(".")[0].split("_")[-1])
+            print("-" * 50)
+            print("Processing split {}, model {}".format(k, n_model))
+            # Perform lagged processing
+            if lag_counter < lag and count > 0: 
+                print("Skipping, lag counter: {}", lag_counter)
+                lag_counter += 1
+                continue
+            print("-" * 50)
+            
+            # Load the model
+            model_logdir = "/".join(model_path.split("/")[:-1]) + "/"
+            model = modellib.MaskRCNN(mode="inference", config=config, model_dir=model_logdir)
+            model.load_weights(model_path, by_name=True)
            
-           # Load the model
-           model_logdir = "/".join(model_path.split("/")[:-1]) + "/"
-           model = modellib.MaskRCNN(mode="inference", config=config, model_dir=model_logdir)
-           model.load_weights(model_path, by_name=True)
-           
-           # Run the prediction
-           mAP = float(compute_batch_ap(model, model_config=model_config, 
+            # Run the prediction
+            mAP = float(compute_batch_ap(model, model_config=model_config, 
                                       dataset="data/", limit=None, verbose=1))
-    
-           # Append the result to the dictionary
-           cv_result = {"k": k, 
-                        "n": n_model, 
-                        "mAP": mAP}
-           cv_results.update(cv_result)
+        
+            # Append the result to the dictionary
+            cv_results[cv_result_id] = {"k": k, 
+                                        "n": n_model, 
+                                        "mAP": mAP}
+            cv_result_id += 1
+            
+            # Clear the session
+            backend.clear_session()
            
-           # Clear the session
-           backend.clear_session()
-           
-           # Json serialize and save the results at each step
-           cv_results_str = json.dumps(cv_results)
-           with open(os.path.join(cv_dir, "CV_results"), "w") as f: 
-               f.write(cv_results_str)
-    
-          
+            # Save the results as .csv 
+            cv_results_df = pd.DataFrame(cv_results).transpose()
+            cv_results_df.to_csv(os.path.join(cv_dir, "CV_results.csv"))
+
+            
+                  
 def detect(model, image_path=None): 
     """
     Detect cells for specified piece and display the predictions 
@@ -872,7 +885,8 @@ if __name__ == '__main__':
         train_cv(model_dir=args.logs, model_weights=args.weights, 
                  model_config=config, k_fold=args.k_fold)
     elif args.command == "compute_cv_results":
-        compute_cv_results(cv_dir=args.directory, model_config=config, n_splits=args.k_fold)
+        compute_cv_results(cv_dir=args.directory, model_config=config, lag=10,
+                           n_splits=args.k_fold)
     elif args.command == "detect":
         detect(model, image_path=args.image)
     elif args.command == "validate":
