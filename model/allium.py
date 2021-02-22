@@ -501,9 +501,9 @@ def compute_cv_results(cv_dir, model_config, n_splits=5, random_state=123):
            backend.clear_session()
            
            # Json serialize and save the results at each step
-           cv_results = json.dumps(cv_results)
+           cv_results_str = json.dumps(cv_results)
            with open(os.path.join(cv_dir, "CV_results"), "w") as f: 
-               f.write(cv_results)
+               f.write(cv_results_str)
     
           
 def detect(model, image_path=None): 
