@@ -84,7 +84,7 @@ class AlliumConfig(Config):
     # MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
 
 ############################################################
-#  Dataset
+#  Dataset class
 ############################################################
 
 class AlliumDataset(utils.Dataset):
@@ -197,8 +197,53 @@ class AlliumDataset(utils.Dataset):
             super(self.__class__, self).image_reference(image_id)
 
 
+def compute_batch_ap(model, model_config, dataset, limit, verbose=1):
+    """
+    Validates the model on the dataset in the provided directory, and 
+    computes validation metric (mAP).
+    """
+    # Validation dataset
+    dataset_val = AlliumDataset()
+    dataset_val.load_allium(dataset, "val")
+    dataset_val.prepare()
+    if limit:
+        image_ids = dataset_val.image_ids[:limit]
+    else: 
+        image_ids = dataset_val.image_ids
+    print("Images: {}\nClasses: {}".format(len(dataset_val.image_ids), dataset_val.class_names))
+    
+    # Compute mAP
+    APs = []
+    for image_id in image_ids:
+        # Load image
+        image, image_meta, gt_class_id, gt_bbox, gt_mask =\
+            modellib.load_image_gt(dataset_val, config,
+                                   image_id, use_mini_mask=False)
+        # Run object detection
+        results = model.detect_molded(image[np.newaxis], image_meta[np.newaxis], verbose=0)
+        # Compute AP over range 0.5 to 0.95
+        r = results[0]
+        ap = utils.compute_ap_range(
+            gt_bbox, gt_class_id, gt_mask,
+            r['rois'], r['class_ids'], r['scores'], r['masks'],
+            verbose=0)
+        APs.append(ap)
+        if verbose:
+            # info = dataset.image_info[image_id]
+            meta = modellib.parse_image_meta(image_meta[np.newaxis,...])
+            print("{:3} {}   AP: {:.2f}".format(
+                meta["image_id"][0], meta["original_image_shape"][0], ap))
+    
+    # Print the results
+    mAP = np.mean(APs)
+    print("Average precisions are: {}".format(APs))
+    print("Mean average precision is: {}".format(mAP))
+          
+    return mAP
+
+
 def prepare_crossval_splits(images_path="data/images/", annotations_path="data/annotations", 
-                            random_state=None, n_splits=10, split_no=0):
+                            random_state=123, n_splits=10, split_no=0):
     """
     TODO: write description here and with comments in the arguments
     Parameters
@@ -342,6 +387,8 @@ def train_cv(model_dir, model_weights, model_config, k_fold):
     """
     //Write docstrings here//
     """
+    import keras.backend as backend
+    
     # Initialize CV directory
     cv_dir = os.path.join(model_dir, "CV")
     # Clean CV directory
@@ -393,8 +440,72 @@ def train_cv(model_dir, model_weights, model_config, k_fold):
         # Train the model
         print("Training model for k={}".format(k))
         train(model)
-    
+        
+        # Clean Keras sesson to free the memory
+        backend.clear_session()
+        
 
+def compute_cv_results(cv_dir, model_config, n_splits=5, random_state=123):
+    """
+    //Add docstrings here//
+    """
+    import keras.backend as backend
+    cv_results = {}
+    
+    # Compute K for k-fold CV
+    K = os.listdir(cv_dir)
+    K = [int(el) for el in K]
+    K.sort()
+
+    # Check the consistency of CV folders
+    num_models = []
+    for k in K:
+        k_dir = os.path.join(cv_dir, str(k))
+        k_model_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(k_dir) for f in filenames]
+        k_model_list = [k_model for k_model in k_model_list if k_model.split(".")[-1] == "h5"]
+        num_models.append(len(k_model_list))
+    if not all(n==num_models[0] for n in num_models):
+        print("=" * 50)
+        print("Warning: inconsistent number of models in K-fold CV directory")
+        print("=" * 50)
+        
+    # Go through the models and compute CV metrics
+    for k in K:
+        k_dir = os.path.join(cv_dir, str(k))
+        k_model_list = [os.path.join(dp, f) for dp, dn, filenames in os.walk(k_dir) for f in filenames]
+        k_model_list = [k_model for k_model in k_model_list if k_model.split(".")[-1] == "h5"]
+        
+        # Prepare validation split
+        prepare_crossval_splits(images_path="data/images/", annotations_path="data/annotations", 
+                            random_state=random_state, n_splits=n_splits, split_no=k)
+        
+        for model_path in k_model_list:
+           n_model = int(model_path.split("/")[-1].split(".")[0].split("_")[-1])
+           
+           # Load the model
+           model_logdir = "/".join(model_path.split("/")[:-1]) + "/"
+           model = modellib.MaskRCNN(mode="inference", config=config, model_dir=model_logdir)
+           model.load_weights(model_path, by_name=True)
+           
+           # Run the prediction
+           mAP = int(compute_batch_ap(model, model_config=model_config, 
+                                      dataset="data/", limit=None, verbose=1))
+    
+           # Append the result to the dictionary
+           cv_result = {"k": k, 
+                        "n": n_model, 
+                        "mAP": mAP}
+           cv_results.update(cv_result)
+           
+           # Clear the session
+           backend.clear_session()
+           
+           # Json serialize and save the results at each step
+           cv_results = json.dumps(cv_results)
+           with open(os.path.join(cv_dir, "CV_results"), "w") as f: 
+               f.write(cv_results)
+    
+          
 def detect(model, image_path=None): 
     """
     Detect cells for specified piece and display the predictions 
@@ -656,52 +767,6 @@ def report(model, config, dir_path=None):
         cv2.imwrite('predictions.jpg', image)
         
         
-def compute_batch_ap(model, dataset, limit, verbose=1):
-    """
-    Validates the model on the dataset in the provided directory, and 
-    computes validation metric (mAP).
-    """
-    # Validation dataset
-    dataset_val = AlliumDataset()
-    dataset_val.load_allium(dataset, "val")
-    dataset_val.prepare()
-    if limit:
-        image_ids = dataset_val.image_ids[:limit]
-    else: 
-        image_ids = dataset_val.image_ids
-    print("Images: {}\nClasses: {}".format(len(dataset_val.image_ids), dataset_val.class_names))
-    
-    # Compute mAP
-    APs = []
-    for image_id in image_ids:
-        # Load image
-        image, image_meta, gt_class_id, gt_bbox, gt_mask =\
-            modellib.load_image_gt(dataset_val, config,
-                                   image_id, use_mini_mask=False)
-        # Run object detection
-        results = model.detect_molded(image[np.newaxis], image_meta[np.newaxis], verbose=0)
-        # Compute AP over range 0.5 to 0.95
-        r = results[0]
-        ap = utils.compute_ap_range(
-            gt_bbox, gt_class_id, gt_mask,
-            r['rois'], r['class_ids'], r['scores'], r['masks'],
-            verbose=0)
-        APs.append(ap)
-        if verbose:
-            # info = dataset.image_info[image_id]
-            meta = modellib.parse_image_meta(image_meta[np.newaxis,...])
-            print("{:3} {}   AP: {:.2f}".format(
-                meta["image_id"][0], meta["original_image_shape"][0], ap))
-    
-    # Print the results
-    mAP = np.mean(APs)
-    print("Average precisions are: {}".format(APs))
-    print("Mean average precision is: {}".format(mAP))
-          
-    return mAP
-
-
-
 ############################################################
 #  Main block
 ############################################################
@@ -769,7 +834,7 @@ if __name__ == '__main__':
                                   model_dir=args.logs)
 
     # Select weights file to load
-    if args.command != "train_cv":
+    if args.command not in ["train_cv", "compute_cv_results"]:
         if args.weights.lower() == "coco":
             weights_path = COCO_WEIGHTS_PATH
             # Download weights file
@@ -787,7 +852,7 @@ if __name__ == '__main__':
         pass
 
     # Load weights
-    if args.command != "train_cv":
+    if args.command not in ["train_cv", "compute_cv_results"]:
         print("Loading weights ", weights_path)
         if args.weights.lower() == "coco":
             # Exclude the last layers because they require a matching
@@ -806,10 +871,12 @@ if __name__ == '__main__':
     elif args.command == "train_cv":
         train_cv(model_dir=args.logs, model_weights=args.weights, 
                  model_config=config, k_fold=args.k_fold)
+    elif args.command == "compute_cv_results":
+        compute_cv_results(cv_dir=args.directory, model_config=config, n_splits=args.k_fold)
     elif args.command == "detect":
         detect(model, image_path=args.image)
     elif args.command == "validate":
-        compute_batch_ap(model, dataset=args.dataset, limit=None)
+        compute_batch_ap(model, model_config=config, dataset=args.dataset, limit=None)
     elif args.command == "detect_and_annotate":
         detect_and_annotate(model, dir_path=args.directory)
     elif args.command == "report":

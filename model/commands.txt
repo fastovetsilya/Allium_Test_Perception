@@ -12,6 +12,9 @@ python allium.py validate --weights=/media/saltair/Library/Allium_cepa_experimen
 # Train models for cross-validation
 python allium.py train_cv --weights=coco --dataset=data/
 
+# Compute cross-validation results
+python allium.py compute_cv_results --directory=logs/CV/
+
 # detect and annotate
 python allium.py detect_and_annotate --directory=/home/saltair/Desktop/Nd_Control_1_3 --weights=/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/logs/allium20210218T2144/mask_rcnn_allium_0085.h5
 
