@@ -451,8 +451,13 @@ def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=12
     //Add docstrings here//
     """
     import keras.backend as backend
+    # Prepare the variables, clean the previous output
     cv_results = {}
     cv_result_id = 0
+    try:
+        os.remove(os.path.join(cv_dir, "CV_results.csv"))
+    except: 
+        pass
     
     # Compute K for k-fold CV
     K = os.listdir(cv_dir)
@@ -482,7 +487,7 @@ def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=12
         prepare_crossval_splits(images_path="data/images/", annotations_path="data/annotations", 
                             random_state=random_state, n_splits=n_splits, split_no=k)
         
-        # TODO: implement lag
+        # Introduce lag
         lag_counter = 0
         for count, model_path in enumerate(k_model_list):
             n_model = int(model_path.split("/")[-1].split(".")[0].split("_")[-1])
@@ -495,6 +500,8 @@ def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=12
                 continue
             print("-" * 50)
             
+            # Reset the lag counter
+            lag_counter = 0
             # Load the model
             model_logdir = "/".join(model_path.split("/")[:-1]) + "/"
             model = modellib.MaskRCNN(mode="inference", config=config, model_dir=model_logdir)
@@ -517,8 +524,7 @@ def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=12
             cv_results_df = pd.DataFrame(cv_results).transpose()
             cv_results_df.to_csv(os.path.join(cv_dir, "CV_results.csv"))
 
-            
-                  
+                           
 def detect(model, image_path=None): 
     """
     Detect cells for specified piece and display the predictions 
