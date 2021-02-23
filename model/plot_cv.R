@@ -30,7 +30,7 @@ stats_data$iteration <- val_groups
 rownames(stats_data) <- val_groups
 
 # Make a ggplot
-png(paste0(cv_dir, 'cv_plot.png'))
+png(paste0(cv_dir, 'CV_plot.png'))
 ggplot(stats_data, aes(x = iteration, y = val_means)) +
   geom_errorbar(aes(ymin=val_CI_low, ymax=val_CI_high), width=100) +
   geom_line() +

@@ -456,6 +456,7 @@ def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=12
     cv_result_id = 0
     try:
         os.remove(os.path.join(cv_dir, "CV_results.csv"))
+        os.remove(os.path.join(cv_dir, "CV_plot.png"))
     except: 
         pass
     
