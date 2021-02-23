@@ -495,7 +495,7 @@ def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=12
             print("-" * 50)
             print("Processing split {}, model {}".format(k, n_model))
             # Perform lagged processing
-            if lag_counter < lag and count > 0 and count != len(k_model_list): 
+            if lag_counter < lag and count > 0 and count != (len(k_model_list) - 1): 
                 print("Skipping, lag counter: {}", lag_counter)
                 lag_counter += 1
                 continue
@@ -892,7 +892,7 @@ if __name__ == '__main__':
         train_cv(model_dir=args.logs, model_weights=args.weights, 
                  model_config=config, k_fold=args.k_fold)
     elif args.command == "compute_cv_results":
-        compute_cv_results(cv_dir=args.directory, model_config=config, lag=10,
+        compute_cv_results(cv_dir=args.directory, model_config=config, lag=5,
                            n_splits=args.k_fold)
     elif args.command == "detect":
         detect(model, image_path=args.image)

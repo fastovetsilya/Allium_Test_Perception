@@ -13,9 +13,9 @@ val_means <- aggregate(val_result$mAP, by=list(val_result$n), FUN=mean)
 val_groups <- val_means$Group.1
 val_means <- val_means$x
 val_CI_low <- aggregate(val_result$mAP, by=list(val_result$n), 
-                        FUN=function(x) tryCatch(t.test(x)$conf.int[1]$x, error = return(0)))$x  
+                        FUN=function(x) tryCatch(t.test(x)$conf.int[1], error = return(0)))$x  
 val_CI_high <- aggregate(val_result$mAP, by=list(val_result$n), 
-                         FUN=function(x) tryCatch(t.test(x)$conf.int[2]$x, error = return(0)))$x
+                         FUN=function(x) tryCatch(t.test(x)$conf.int[2], error = return(0)))$x
 
 # Cut the intervals
 val_means <- apply(as.data.frame(val_means), 1, FUN = function(x) ifelse(x < 0, 0, x))
@@ -41,5 +41,7 @@ ggplot(stats_data, aes(x = iteration, y = val_means)) +
   ggtitle('Cross-validation mAP (mean average precision)') +
   xlab('Iteration') +
   ylab('CV mAP@0.50') + 
-  xlim(c(0, max(val_groups)))
+  xlim(c(0, max(val_groups))) + 
+  geom_hline(yintercept=max(val_means), linetype="dashed", color = "blue", size=0.5) + 
+  geom_hline(yintercept=summary(val_means)[2], linetype="dashed", color = "darkgrey", size=0.5)
 dev.off()
