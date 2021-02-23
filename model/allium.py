@@ -494,7 +494,7 @@ def compute_cv_results(cv_dir, model_config, lag=10, n_splits=5, random_state=12
             print("-" * 50)
             print("Processing split {}, model {}".format(k, n_model))
             # Perform lagged processing
-            if lag_counter < lag and count > 0: 
+            if lag_counter < lag and count > 0 and count != len(k_model_list): 
                 print("Skipping, lag counter: {}", lag_counter)
                 lag_counter += 1
                 continue
