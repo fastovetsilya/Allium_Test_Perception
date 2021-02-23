@@ -1,5 +1,4 @@
 # Make a ggplot for YOLO cross-validation 
-library(ini)
 library(ggplot2)
 
 # Define CV directory
