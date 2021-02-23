@@ -13,9 +13,13 @@ val_means <- aggregate(val_result$mAP, by=list(val_result$n), FUN=mean)
 val_groups <- val_means$Group.1
 val_means <- val_means$x
 val_CI_low <- aggregate(val_result$mAP, by=list(val_result$n), 
-                        FUN=function(x) tryCatch(t.test(x)$conf.int[1], error = return(0)))$x  
+                        FUN=function(x) tryCatch(return(t.test(x)$conf.int[1]), 
+                                                 warning = return(t.test(x)$conf.int[1]),
+                                                 error = return(0)))$x  
 val_CI_high <- aggregate(val_result$mAP, by=list(val_result$n), 
-                         FUN=function(x) tryCatch(t.test(x)$conf.int[2], error = return(0)))$x
+                         FUN=function(x) tryCatch(return(t.test(x)$conf.int[2]), 
+                                                  warning = return(t.test(x)$conf.int[2]),
+                                                  error = return(0)))$x
 
 # Cut the intervals
 val_means <- apply(as.data.frame(val_means), 1, FUN = function(x) ifelse(x < 0, 0, x))
@@ -35,9 +39,10 @@ ggplot(stats_data, aes(x = iteration, y = val_means)) +
   geom_errorbar(aes(ymin=val_CI_low, ymax=val_CI_high), width=100) +
   geom_line() +
   geom_point() +
-  geom_text(aes(label = round(val_means, 3)), col = 'red') +
-  geom_text(aes(label = round(val_CI_low, 3)), vjust = 2) +
-  geom_text(aes(label = round(val_CI_high, 3)), vjust = -1) +
+  geom_smooth() + 
+  geom_text(aes(label = round(val_means, 2)), col = 'red') +
+  geom_text(aes(label = round(val_CI_low, 2)), vjust = 2) +
+  geom_text(aes(label = round(val_CI_high, 2)), vjust = -1) +
   ggtitle('Cross-validation mAP (mean average precision)') +
   xlab('Iteration') +
   ylab('CV mAP@0.50') + 
