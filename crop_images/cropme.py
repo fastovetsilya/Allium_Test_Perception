@@ -10,7 +10,7 @@ Image.MAX_IMAGE_PIXELS = 933120000 * 10**2 #Increase max image size
 ##################################################################
 # Initialize input and output paths here
 input_dir = 'input/'
-output_dir = 'output/'
+output_dir = 'output/jpg/'
 ##################################################################
 
 # Define the method            
@@ -34,7 +34,8 @@ def imgcrop_res(input_path, xRes, yRes):
                 if not path.isdir(output_dir + filename):
                     mkdir(output_dir + filename)
                 a.save(output_dir + '/' + filename + '/' + 
-                       filename + '__' + str(i) + '-' + str(j) + '.png')
+                       filename + '__' + str(i) + '-' + str(j) + '.jpg', 
+                       optimize=True, quality=90)
             except:
                 pass
 

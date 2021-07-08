@@ -29,6 +29,7 @@ import imgaug
 import numpy as np
 import skimage.draw
 import pandas as pd
+import cv2
 from sklearn.model_selection import KFold
 
 # Root directory of the project
@@ -555,7 +556,6 @@ def detect_and_annotate(model, dir_path=None):
     This is used to generate the predictions to make it easier to 
     label the data. 
     """
-    import cv2
     
     # List files in the directory
     image_list = os.listdir(dir_path)
@@ -586,6 +586,11 @@ def detect_and_annotate(model, dir_path=None):
                 peri = cv2.arcLength(c, closed=True)
                 approx = cv2.approxPolyDP(c, epsilon=0.002 * peri, closed=True)
                 approx = approx.reshape(approx.shape[0], approx.shape[2])
+                
+                # Filter by number of points and contour area
+                if len(approx < 3) and cv2.contourArea(approx) < 10000:
+                    continue
+                
                 # Create region part
                 region = {}
                 region['region_attributes'] = {}
