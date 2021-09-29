@@ -21,3 +21,6 @@ python allium.py detect_and_annotate --directory=/media/saltair/Library/Allium_c
 # generate report
 python allium.py report --directory=./data/test/ --weights=last
 
+# Clean GPU
+for i in $(sudo lsof /dev/nvidia0 | grep python  | awk '{print $2}' | sort -u); do kill -9 $i; done
+

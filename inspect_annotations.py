@@ -5,8 +5,8 @@ Inspect VIA .json annotations
 import json
 
 # Load json annotations
-path_to_annotations = '/media/saltair/Library/Allium_cepa_experiment/via_annotations/reviewed/ILYA_Nd_Control_1_1/Nd_Control_1_1_annotations.json'
-path_to_annotations2 = '/media/saltair/Library/Allium_cepa_experiment/via_annotations/reviewed/png/ILYA_Nd_Control_1_1/Nd_Control_1_1_annotations.json'
+path_to_annotations = '/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data/annotations/Nd_Control_1_2_annotations.json'
+path_to_annotations2 = '/media/saltair/Library/Allium_cepa_experiment/repo/Allium_Test_Perception/model/data/annotations/Nd_Control_2_1_annotations.json'
 
 with open(path_to_annotations, 'r') as f:
     annotations = f.read()

@@ -81,14 +81,14 @@ class AlliumConfig(Config):
     DETECTION_MIN_CONFIDENCE = 0.3
     DETECTION_NMS_THRESHOLD = 0.5
 
-    MAX_GT_INSTANCES = 200
-    DETECTION_MAX_INSTANCES = 200
+    MAX_GT_INSTANCES = 500 #200
+    DETECTION_MAX_INSTANCES = 500 #200
 
-    IMAGE_MIN_DIM = 1024
-    IMAGE_MAX_DIM = 1152
+    IMAGE_MIN_DIM = 1024 #1024
+    IMAGE_MAX_DIM = 1152 #1152
 
     USE_MINI_MASK = False
-    # MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
+    # MINI_MASK_SHAPE = (512, 576)  #56, 56 (height, width) of the mini-mask
 
 ############################################################
 #  Dataset class
@@ -159,7 +159,7 @@ class AlliumDataset(utils.Dataset):
 
     def load_mask(self, image_id):
         """Generate instance masks for an image.
-       Returns:
+        Returns:
         masks: A bool array of shape [height, width, instance count] with
             one mask per instance.
         class_ids: a 1D array of class IDs of the instance masks.
@@ -199,7 +199,7 @@ class AlliumDataset(utils.Dataset):
 
         # Return mask, and array of class IDs of each instance.
         classIDs = np.array(classIDs, dtype=np.int32)
-        return mask.astype(np.bool), classIDs
+        return mask.astype(bool), classIDs
 
     def image_reference(self, image_id):
         """Return the path of the image."""
@@ -309,7 +309,7 @@ def prepare_crossval_splits(images_path="data/images/", annotations_path="data/a
         images_list_train = images_list
         images_list_val = images_list
     else:
-        kf = KFold(n_splits=n_splits, random_state=random_state)
+        kf = KFold(n_splits=n_splits, random_state=random_state, shuffle=False)
         kf.get_n_splits(images_list)
         kf_count = 0
         for train_index, val_index in kf.split(images_list):
@@ -366,18 +366,18 @@ def train(model):
     dataset_val.load_allium(args.dataset, "val")
     dataset_val.prepare()
 
-    # Data augmentations
-    augmentation = imgaug.augmenters.Sometimes(0.5, [
-        imgaug.augmenters.Fliplr(0.5),
-        imgaug.augmenters.Flipud(0.5),
-        imgaug.augmenters.Multiply((0.5, 1.5))
-        #imgaug.augmenters.Rotate((-45, 45)),
-        #imgaug.augmenters.Rot90((1, 3))
-        #imgaug.augmenters.MultiplyBrightness((0.5, 1.5))
-        #imgaug.augmenters.ChangeColorTemperature((1100, 10000)),
-        #imgaug.augmenters.MultiplyHueAndSaturation(mul_hue=(0.5, 1.5)),
-        #imgaug.augmenters.GammaContrast((0.5, 2.0), per_channel=True),
-    ])
+    # # Data augmentations
+    # augmentation = imgaug.augmenters.Sometimes(0.5, [
+    #     imgaug.augmenters.Fliplr(0.5),
+    #     imgaug.augmenters.Flipud(0.5),
+    #     imgaug.augmenters.Multiply((0.5, 1.5))
+    #     #imgaug.augmenters.Rotate((-45, 45)),
+    #     #imgaug.augmenters.Rot90((1, 3))
+    #     #imgaug.augmenters.MultiplyBrightness((0.5, 1.5))
+    #     #imgaug.augmenters.ChangeColorTemperature((1100, 10000)),
+    #     #imgaug.augmenters.MultiplyHueAndSaturation(mul_hue=(0.5, 1.5)),
+    #     #imgaug.augmenters.GammaContrast((0.5, 2.0), per_channel=True),
+    # ])
 
     # # Training - Stage 1
     # # Pretraing heads
@@ -385,7 +385,7 @@ def train(model):
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
                 epochs=15,
-                augmentation=augmentation,
+                #augmentation=augmentation,
                 layers='heads')
     # Training - Stage 2
     # Finetune layers from ResNet stage 4 and up
@@ -393,14 +393,14 @@ def train(model):
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE / 10,
                 epochs=20,
-                augmentation=augmentation,
+                #augmentation=augmentation,
                 layers='4+')
     # Training - Stage 3
     # Finetune layers from ResNet stage 3 and up
     print("Training Resnet layer 3+")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE / 100,
-                augmentation=augmentation,
+                #augmentation=augmentation,
                 epochs=100,
                 layers='all')
 
@@ -456,7 +456,7 @@ def train_cv(model_dir, model_weights, model_config, k_fold):
         # Create K's split
         print("Preparing new cross-validation split, k={}".format(k))
         prepare_crossval_splits(images_path="data/images/", annotations_path="data/annotations",
-                                random_state=123, n_splits=k_fold, split_no=k)
+                                random_state=None, n_splits=k_fold, split_no=k)
 
         # Train the model
         print("Training model for k={}".format(k))
